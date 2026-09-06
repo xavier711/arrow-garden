@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#eef8f6"><meta name="description" content="点点箭头，让它们出发！适合小朋友的触屏解谜游戏，500个难度关卡，随机生成且每局都有解。">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="箭头出发">
+  <meta name="app-build" content="development">
+  <title>箭头出发！</title><link rel="stylesheet" href="./src/styles.css">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/arrow-192.png">
+  <link rel="apple-touch-icon" href="./icons/arrow-192.png">
+</head>
+<body>
+<div class="app">
+  <header class="topbar"><a class="brand" href="./" aria-label="箭头出发首页"><span class="brand-icon" aria-hidden="true">↗</span><span>箭头出发<span class="orange">！</span></span></a><div class="level-line"><button class="level-button" id="levels"><span class="grid-icon" aria-hidden="true">▦</span><span id="level-label">第 1 关</span><span class="chevron" aria-hidden="true">⌄</span></button><span class="difficulty" id="difficulty">小小起步</span></div><div class="topbar-actions"><button id="fullscreen" class="icon-button" aria-label="全屏玩游戏" aria-pressed="false" title="全屏玩游戏" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></svg></button><button id="help" class="icon-button" aria-label="游戏帮助" aria-haspopup="dialog" aria-controls="help-dialog" title="游戏帮助">?</button><button id="sound" class="icon-button" aria-label="开启声音" aria-pressed="false"></button></div></header>
+  <main>
+    <section class="play-area" aria-label="箭头棋盘">
+      <div class="board-header"><span><span class="live-dot"></span>还剩 <strong id="remaining">0</strong> 个箭头</span><span id="count">0 / 0</span></div>
+      <div class="progress-track" role="progressbar" aria-label="本关进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div id="progress"></div></div>
+      <div class="board-space" id="board-space"><div class="board-wrap" id="board-viewport" tabindex="0" aria-label="棋盘，可放大后拖动查看"><svg id="board" role="group" aria-label="点击箭头，让它滑出棋盘"></svg></div></div>
+
+      <p class="feedback" id="feedback" aria-live="polite">找找看，哪个箭头前面是空的？</p>
+    </section>
+    <div class="game-tools">
+      <div class="zoom-controls" aria-label="棋盘缩放"><button id="zoom-out" aria-label="缩小棋盘">−</button><button id="zoom-reset" aria-label="查看完整棋盘">全图</button><button id="zoom-in" aria-label="放大棋盘">＋</button></div>
+    <div class="actions"><button class="hint-button" id="hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6m-5 3h4M8 14a6 6 0 1 1 8 0c-1 1-1 2-1 2H9s0-1-1-2Z"/></svg>帮帮我<span>提示</span></button><button class="shuffle-button" id="shuffle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-5c-4 0-4 10-8 10H3m14-13 3 3-3 3M3 7h4c1.5 0 2.5 1.5 3 3m4 4c.7 2 1.3 3 3 3h3m-3-3 3 3-3 3"/></svg>换一局</button></div>
+    </div>
+  </main>
+</div>
+<dialog id="level-dialog"><div class="dialog-heading"><div><p class="eyebrow">一步一步，慢慢来</p><h2>选一个关卡</h2></div><button class="icon-button close" aria-label="关闭关卡选择">×</button></div><label class="chapter-label" for="chapter-select">探险地图 · 500 关</label><select id="chapter-select"></select><div id="level-grid"></div><div class="level-pagination"><button id="page-prev" aria-label="前25关">‹</button><span id="page-label" aria-live="polite"></span><button id="page-next" aria-label="后25关">›</button></div><button id="back-progress" class="text-button"><span id="progress-label"></span> · 回到这里</button><p class="dialog-note">每次进入，都是新的小挑战</p></dialog>
+<dialog id="win-dialog"><div class="win-content"><div class="win-symbol" aria-hidden="true">✦</div><p class="eyebrow">全部出发，成功啦！</p><h2>你真棒！</h2><p id="win-text">又完成了一个小挑战</p><button id="next" class="primary-button">下一关 <span aria-hidden="true">→</span></button><button id="again" class="text-button">这关再玩一次</button></div></dialog>
+<dialog id="shuffle-dialog"><div class="dialog-heading"><h2>换一个新棋盘？</h2><button class="icon-button close" aria-label="关闭">×</button></div><p>这一局会重新开始哦。</p><div class="confirm-actions"><button class="shuffle-button close">接着玩</button><button id="confirm-shuffle" class="primary-button">换一局</button></div></dialog>
+<dialog id="start-dialog" aria-labelledby="start-title"><div class="win-content"><h2 id="start-title">箭头出发！</h2><p>全屏玩，棋盘看得更清楚</p><button id="start-fullscreen" class="primary-button" autofocus>全屏开始</button><button class="text-button close">直接玩</button></div></dialog>
+<dialog id="help-dialog" aria-labelledby="help-title"><div class="dialog-heading"><h2 id="help-title">游戏帮助</h2><button class="icon-button close" aria-label="关闭游戏帮助">×</button></div>
+<h3>怎么玩</h3><p>点一点，箭头会沿着朝向滑出去。前面没有其他箭头挡住，就能出发。点错也没关系。</p><p>看不清时点“＋”放大，再拖动棋盘；点“全图”恢复。遇到困难可以点“帮帮我”。</p>
+<h3>全屏与安装</h3><p>右上角的全屏按钮可以切换全屏。从主屏幕打开游戏，可以减少浏览器工具栏占用。</p><button id="install" class="install-button" hidden>安装到主屏幕</button>
+<h3>离线游玩</h3><p id="offline-status" class="install-status" role="status"></p><p>首次联网完成准备后，同一浏览器中可以断网玩。请保留网站数据。</p><p id="install-status" class="install-status" role="status" hidden></p>
+</dialog>
+<dialog id="install-dialog" aria-labelledby="install-title"><div class="dialog-heading"><h2 id="install-title">添加到主屏幕</h2><button class="icon-button close" aria-label="关闭安装说明">×</button></div><p>从主屏幕打开，游戏可以独立显示，减少浏览器工具栏占用。</p><ul class="install-help"><li><strong>iPad / iPhone：</strong>用 Safari 打开，点分享，再选“添加到主屏幕”；如果出现“作为网页 App 打开”，请开启。</li><li><strong>安卓平板：</strong>查看浏览器菜单中的“安装应用”或“添加到主屏幕”。如果没有，可用 Chrome 打开同一网址再试。</li><li><strong>仍然没有安装选项：</strong>可以收藏网址，直接在浏览器里玩；支持全屏的浏览器可点右上角全屏按钮。</li></ul><p>看到“已准备好离线游玩”后，无需安装也能在同一浏览器中断网玩。请保留网站数据。</p></dialog>
+<script type="module" src="./src/main.mjs"></script>
+<script type="module" src="./src/pwa.mjs"></script>
+</body></html>

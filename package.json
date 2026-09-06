@@ -1,0 +1,17 @@
+{
+  "name": "arrow-garden",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "箭头出发：500关可解的触屏箭头游戏",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "dev": "node scripts/serve.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/serve.mjs --preview",
+    "test": "node tests/engine.test.mjs && node tests/pwa.test.mjs && node tests/package.test.mjs"
+  }
+}
