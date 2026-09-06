@@ -5,8 +5,7 @@ export const CHAPTERS = ['弯弯小路','折线探险','回弯迷宫','交错森
 export function config(level) {
   level=Math.max(1,Math.min(LEVEL_COUNT,Math.floor(level)||1));
   return {size:level<=5?4:level<=15?5:level<=30?6:Math.min(14,8+Math.floor((level-31)/45)),
-    density:Math.min(.96,.68+level*.001),maxLength:level<=5?3:level<=15?4:Math.min(18,5+Math.floor(level/35)),
-    pool:level<=5?12:Math.min(96,24+Math.floor(level/6)),kinds:level<8?1:level<18?2:level<35?3:level<65?4:5};
+    density:1,maxLength:level<=5?3:level<=15?4:Math.min(18,5+Math.floor(level/35))};
 }
 const key = ([x,y]) => `${x},${y}`;
 export function canExit(arrow, arrows, size) {
@@ -45,76 +44,85 @@ export function shapeOf(cells) {
   return '多折线';
 }
 export function generate(level,seed) {
-  const random=seeded(seed), {size,density,maxLength,pool,kinds}=config(level);
-  const arrows=[], occupied=new Set(), rays=[], available=new Set();let nextLimit=maxLength;
+  const random=seeded(seed),{size,maxLength}=config(level);
+  // Tile first, then peel connected tiles into arrows. Every cell belongs to
+  // exactly one tile, and no tile has fewer than two cells.
+  const tiles=new Map(),occupied=new Map();let nextId=0;
+  const add=cells=>{const id=nextId++;tiles.set(id,cells);for(const p of cells)occupied.set(key(p),id);};
+  for(let y=0;y<size;y++)for(let x=0;x<size;){
+    const length=size-x===3?3:2;
+    add(Array.from({length},(_,i)=>[x+i,y]));x+=length;
+  }
+  // Flip pairs of dominoes to remove the initial row pattern without gaps.
+  for(let step=0;step<size*size*8;step++){
+    const x=Math.floor(random()*(size-1)),y=Math.floor(random()*(size-1));
+    const square=[[x,y],[x+1,y],[x,y+1],[x+1,y+1]],ids=new Set(square.map(p=>occupied.get(key(p))));
+    if(ids.size!==2||[...ids].some(id=>tiles.get(id).length!==2))continue;
+    const horizontal=tiles.get([...ids][0])[0][1]===tiles.get([...ids][0])[1][1];
+    for(const id of ids)tiles.delete(id);
+    if(horizontal){add([square[0],square[2]]);add([square[1],square[3]]);}
+    else{add([square[0],square[1]]);add([square[2],square[3]]);}
+  }
   const inside=([x,y])=>x>=0&&y>=0&&x<size&&y<size;
-  function candidate(head,dir,allowSingle=false) {
-    if(occupied.has(key(head)))return null;
-    const [dx,dy]=DIRS[dir],ray=new Set();let [x,y]=head;
-    while(inside([x+=dx,y+=dy])){if(occupied.has(`${x},${y}`))return null;ray.add(`${x},${y}`);}
-    const cells=[head],local=new Set([key(head)]),kind=Math.floor(random()*kinds);
-    const length=2+Math.floor(Math.pow(random(),1.6)*(nextLimit-1));
-    let direction=(dir+2)%4,run=0,turns=0,side=random()<.5?1:3;
-    for(let step=1;step<length;step++){
-      const tail=cells[0];
-      const options=[direction,(direction+side)%4,(direction+4-side)%4].filter(d=>{
-        if(step===1&&d!==direction)return false;
-        if(kind===0&&d!==direction)return false;
-        if(kind===1&&turns>=1&&d!==direction)return false;
-        if(kind===3&&turns>=2&&d!==direction)return false;
-        const p=[tail[0]+DIRS[d][0],tail[1]+DIRS[d][1]];
-        return inside(p)&&!occupied.has(key(p))&&!local.has(key(p))&&!ray.has(key(p));
-      });
-      if(!options.length)break;
-      const shouldTurn=step>1&&kind>0&&run>=(kind===4?2:Math.max(1,Math.floor(length/(kind===1?2:3))));
-      const preferred=shouldTurn?(direction+side)%4:direction;
-      const nextDir=options.includes(preferred)?preferred:options[0];
-      if(nextDir!==direction){turns++;run=0;if(kind===2)side=4-side;}
-      direction=nextDir;run++;
-      const next=[tail[0]+DIRS[direction][0],tail[1]+DIRS[direction][1]];cells.unshift(next);local.add(key(next));
+  const direction=(a,b)=>DIRS.findIndex(([dx,dy])=>b[0]-a[0]===dx&&b[1]-a[1]===dy);
+  const clear=(cells,dir)=>{
+    const [dx,dy]=DIRS[dir];let [x,y]=cells.at(-1);
+    while(inside([x+=dx,y+=dy]))if(occupied.has(`${x},${y}`))return false;
+    return true;
+  };
+  const arrows=[];
+  while(tiles.size){
+    const starts=[];
+    for(const [id,tile] of tiles)for(const cells of [tile,[...tile].reverse()]){
+      const dir=direction(cells.at(-2),cells.at(-1));
+      if(clear(cells,dir))starts.push({id,cells,dir});
     }
-    if(cells.length===1&&!allowSingle)return null;
-    const blocked=[];let score=cells.length*.45+turns*.9+random()*2;
-    for(let id=0;id<rays.length;id++)if(cells.some(p=>rays[id].has(key(p)))){
-      blocked.push(id);score+=available.has(id)?18:1;
-    }
-    return {cells,dir,ray,blocked,score};
-  }
-  while(occupied.size<Math.ceil(size*size*density)){
-    nextLimit=arrows.length%4===0?maxLength:Math.min(maxLength,3+Math.floor(random()*3));
-    let best=null;
-    for(let attempt=0;attempt<pool*4;attempt++){
-      const c=candidate([Math.floor(random()*size),Math.floor(random()*size)],Math.floor(random()*4));
-      if(c&&(!best||c.score>best.score))best=c;
-    }
-    if(!best){
-      // Exhaustive legal one-cell fallback closes tiny gaps without creating cycles.
-      for(let y=0;y<size;y++)for(let x=0;x<size;x++)for(let d=0;d<4;d++){
-        const c=candidate([x,y],d,true);if(c&&(!best||c.score>best.score))best=c;
+    // An extreme tile always has an endpoint facing out of the remaining cells.
+    if(!starts.length)throw new Error('No removable tile');
+    const start=starts[Math.floor(random()*starts.length)],used=new Set([start.id]);
+    let cells=[...start.cells];
+    const limit=level<16?maxLength:Math.min(maxLength,4+Math.floor(random()*7));
+    while(cells.length<limit){
+      const tail=cells[0],options=[];
+      for(const [dx,dy] of DIRS){
+        const neighbor=[tail[0]+dx,tail[1]+dy],id=occupied.get(key(neighbor));
+        if(id===undefined||used.has(id))continue;
+        const tile=tiles.get(id);
+        if(cells.length+tile.length>limit)continue;
+        for(const extension of [tile,[...tile].reverse()]){
+          if(key(extension.at(-1))!==key(neighbor))continue;
+          const combined=[...extension,...cells];
+          // Keep the introductory boards straight; later levels favor bends.
+          const turns=combined.slice(2).reduce((n,p,i)=>n+(direction(combined[i],combined[i+1])!==direction(combined[i+1],p)?1:0),0);
+          if(level<8&&turns)continue;
+          options.push({id,cells:combined,score:turns*(level>=65?3:1)+random()*2});
+        }
       }
+      if(!options.length)break;
+      options.sort((a,b)=>b.score-a.score);const best=options[0];
+      used.add(best.id);cells=best.cells;
     }
-    if(!best)break;
-    const id=arrows.length;
-    arrows.push({id,cells:best.cells,dir:best.dir,color:Math.floor(random()*5),shape:shapeOf(best.cells)});
-    best.cells.forEach(p=>occupied.add(key(p)));rays.push(best.ray);
-    best.blocked.forEach(id=>available.delete(id));available.add(id);
+    // This head can leave before every still-unassigned tile, so the generated
+    // order is itself a solution, including when an arrow bends back on itself.
+    for(const id of used){for(const p of tiles.get(id))occupied.delete(key(p));tiles.delete(id);}
+    arrows.push({id:arrows.length,cells,dir:start.dir,color:Math.floor(random()*5),shape:shapeOf(cells)});
   }
-  // Reverse construction is solvable. Carefully reverse endpoints only when the
-  // resulting dependency graph remains acyclic and requires more unlocking.
+  // Add dependencies without changing coverage, lengths, or solvability.
   if(level>=16){
     const quality=m=>m.rounds*3-m.free*5+m.edges*.35;
     let rating=quality(analyze(arrows,size));
     for(let pass=0;pass<(level>=100?2:1);pass++)for(let i=arrows.length-1;i>=0;i--){
-      const original=arrows[i];const cells=[...original.cells].reverse();
-      const directions=cells.length===1?[0,1,2,3]:[DIRS.findIndex(([dx,dy])=>cells.at(-1)[0]-cells.at(-2)[0]===dx&&cells.at(-1)[1]-cells.at(-2)[1]===dy)];
-      let selected=original;
-      for(const dir of directions){
-        arrows[i]={...original,cells,dir};const metrics=analyze(arrows,size);
-        if(metrics&&quality(metrics)>rating){rating=quality(metrics);selected=arrows[i];}
-      }
-      arrows[i]=selected;
+      const original=arrows[i],cells=[...original.cells].reverse();
+      arrows[i]={...original,cells,dir:direction(cells.at(-2),cells.at(-1))};
+      const metrics=analyze(arrows,size);
+      if(metrics&&quality(metrics)>rating)rating=quality(metrics);
+      else arrows[i]=original;
     }
   }
-  if(!arrows.length||!solve(arrows,size))throw new Error('Invalid puzzle');
+  // Rotate/reflect the whole puzzle so odd-sized boards do not share a seam.
+  const rotation=Math.floor(random()*4),reflect=random()<.5;
+  const transform=([x,y])=>{if(reflect)x=size-1-x;for(let i=0;i<rotation;i++)[x,y]=[size-1-y,x];return [x,y];};
+  for(const a of arrows){a.cells=a.cells.map(transform);a.dir=direction(a.cells.at(-2),a.cells.at(-1));a.shape=shapeOf(a.cells);}
+  if(!solve(arrows,size))throw new Error('Invalid puzzle');
   return {size,arrows,seed,level};
 }

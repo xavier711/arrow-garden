@@ -12,6 +12,6 @@
     "dev": "node scripts/serve.mjs",
     "build": "node scripts/build.mjs",
     "preview": "node scripts/serve.mjs --preview",
-    "test": "node tests/engine.test.mjs && node tests/pwa.test.mjs && node tests/package.test.mjs"
+    "test": "node tests/engine.test.mjs && node tests/pwa.test.mjs && node tests/gameplay.test.mjs && node tests/package.test.mjs"
   }
 }

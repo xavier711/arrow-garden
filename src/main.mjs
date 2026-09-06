@@ -5,7 +5,11 @@ let unlocked=Math.max(1,Math.min(LEVEL_COUNT,Math.floor(Number(storage.get('arro
 // Continue past the old 30-level cap without resetting a child's progress.
 if(storage.get('arrow-progress-version')!=='2'&&unlocked===30){unlocked=31;storage.set('arrow-unlocked',31);storage.set('arrow-level',31);}
 storage.set('arrow-progress-version','2');
-let level=Math.max(1,Math.min(unlocked,Math.floor(Number(storage.get('arrow-level')))||1)),sound=storage.get('arrow-sound')==='true',puzzle,arrows,total,busy=false,epoch=0,audio;
+let completed;
+try{const saved=JSON.parse(storage.get('arrow-completed'));completed=new Set(Array.isArray(saved)?saved.filter(n=>Number.isInteger(n)&&n>=1&&n<=LEVEL_COUNT):Array.from({length:unlocked-1},(_,i)=>i+1));}catch{completed=new Set(Array.from({length:unlocked-1},(_,i)=>i+1));}
+storage.set('arrow-completed',JSON.stringify([...completed]));
+const departing=new Set();
+let level=Math.max(1,Math.min(LEVEL_COUNT,Math.floor(Number(storage.get('arrow-level')))||1)),sound=storage.get('arrow-sound')==='true',puzzle,arrows,total,busy=false,epoch=0,audio;
 let zoom=1,levelPage=0,viewportWidth=0;
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 function svg(tag,attrs){const el=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))el.setAttribute(k,v);return el}
@@ -16,23 +20,25 @@ const point=([x,y])=>[x*64+40,y*64+40];
 function pathFor(a){const pts=a.cells.map(point);if(pts.length===1){const [dx,dy]=DIRS[a.dir];pts.unshift([pts[0][0]-dx*21,pts[0][1]-dy*21]);}return pts.map((p,i)=>(i?'L':'M')+p.join(',')).join(' ')}
 function headPath(a){const [x,y]=point(a.cells.at(-1)),[dx,dy]=DIRS[a.dir],px=-dy,py=dx;return `M${x-dx*11+px*10},${y-dy*11+py*10} L${x},${y} L${x-dx*11-px*10},${y-dy*11-py*10}`}
 function message(text,warning=false){$('feedback').textContent=text;$('feedback').classList.toggle('encourage',warning)}
-function progress(){const done=total-arrows.length;$('remaining').textContent=arrows.length;$('count').textContent=`${done} / ${total}`;$('progress').style.width=`${done/total*100}%`;document.querySelector('.progress-track').setAttribute('aria-valuenow',Math.round(done/total*100));$('hint').disabled=busy||!arrows.length;$('shuffle').disabled=busy;}
+function progress(){const done=total-arrows.length;$('remaining').textContent=arrows.length;$('count').textContent=`${done} / ${total}`;$('progress').style.width=`${done/total*100}%`;document.querySelector('.progress-track').setAttribute('aria-valuenow',Math.round(done/total*100));$('hint').disabled=!arrows.length;$('shuffle').disabled=busy;}
 function render(){const board=$('board');board.replaceChildren();const size=puzzle.size*64+16;board.setAttribute('viewBox',`0 0 ${size} ${size}`);
  for(let y=0;y<puzzle.size;y++)for(let x=0;x<puzzle.size;x++)board.append(svg('circle',{cx:x*64+40,cy:y*64+40,r:2,fill:'#e2eae3'}));
  for(const a of arrows){const g=svg('g',{class:'arrow',id:`arrow-${a.id}`,role:'button',tabindex:'0','aria-label':`${a.shape}，${['向上','向右','向下','向左'][a.dir]}的箭头，第${a.cells.at(-1)[1]+1}行第${a.cells.at(-1)[0]+1}列`});g.append(svg('path',{d:pathFor(a),class:'line',stroke:colors[a.color]}),svg('path',{d:headPath(a),class:'head',stroke:colors[a.color]}),svg('path',{d:pathFor(a),class:'hit'}));g.addEventListener('click',()=>move(a));g.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();move(a)}});board.append(g);}
  applyZoom(1);progress();
 }
-function fresh(target=level){epoch++;level=target;busy=false;const seeds=new Uint32Array(1);crypto.getRandomValues(seeds);puzzle=generate(level,seeds[0]);arrows=[...puzzle.arrows];total=arrows.length;storage.set('arrow-level',level);$('level-label').textContent=`第 ${level} 关`;$('difficulty').textContent=CHAPTERS[Math.floor((level-1)/50)];$('win-dialog').close();message('找找看，哪个箭头前面是空的？');render();if(puzzle.size>=8)message('可以放大、拖动棋盘，慢慢找');}
-function move(a){if(busy||!arrows.some(b=>b.id===a.id))return;document.querySelectorAll('.hinted').forEach(e=>e.classList.remove('hinted'));const g=$(`arrow-${a.id}`);if(!canExit(a,arrows,puzzle.size)){g.classList.remove('blocked');void g.getBoundingClientRect();g.classList.add('blocked');message('前面有小伙伴，先让它出发吧',true);tone(false,true);return;}
+function fresh(target=level){epoch++;departing.clear();level=target;busy=false;const seeds=new Uint32Array(1);crypto.getRandomValues(seeds);puzzle=generate(level,seeds[0]);arrows=[...puzzle.arrows];total=arrows.length;storage.set('arrow-level',level);$('level-label').textContent=`第 ${level} 关`;$('difficulty').textContent=CHAPTERS[Math.floor((level-1)/50)];$('win-dialog').close();message('找找看，哪个箭头前面是空的？');render();if(puzzle.size>=8)message('可以放大、拖动棋盘，慢慢找');}
+function move(a){if(!arrows.some(b=>b.id===a.id))return;document.querySelectorAll('.hinted').forEach(e=>e.classList.remove('hinted'));const g=$(`arrow-${a.id}`);if(!canExit(a,arrows,puzzle.size)){g.classList.remove('blocked');void g.getBoundingClientRect();g.classList.add('blocked');message('前面有小伙伴，先让它出发吧',true);tone(false,true);return;}
+ // Accept the move immediately so subsequent taps see the updated board.
+ arrows=arrows.filter(b=>b.id!==a.id);departing.add(a.id);g.style.pointerEvents='none';
  busy=true;progress();tone();message(['出发啦！再找找下一个','真棒！又找到一个','慢慢来，你能做到的'][Math.floor(Math.random()*3)]);
- const activeEpoch=epoch,hadFocus=document.activeElement===g;const finish=()=>{if(activeEpoch!==epoch)return;arrows=arrows.filter(b=>b.id!==a.id);g.remove();busy=false;progress();if(!arrows.length)win();else if(hadFocus)$(`arrow-${arrows[0].id}`).focus();};
+ const activeEpoch=epoch,hadFocus=document.activeElement===g;const finish=()=>{if(activeEpoch!==epoch)return;departing.delete(a.id);g.remove();busy=departing.size>0;progress();if(!arrows.length&&!busy)win();else if(hadFocus&&arrows.length&&(document.activeElement===g||document.activeElement===document.body))$(`arrow-${arrows[0].id}`).focus();};
  if(reduced){finish();return;}
  const line=g.querySelector('.line'),head=g.querySelector('.head');g.querySelector('.hit').remove();g.setAttribute('tabindex','-1');const oldLength=line.getTotalLength(),[dx,dy]=DIRS[a.dir],[hx,hy]=point(a.cells.at(-1)),travel=puzzle.size*64+100;
- line.setAttribute('d',pathFor(a)+` L${hx+dx*travel},${hy+dy*travel}`);line.style.strokeDasharray=`${oldLength} ${oldLength+travel+100}`;const duration=Math.min(850,400+oldLength*.3),start=performance.now();
+ line.setAttribute('d',pathFor(a)+` L${hx+dx*travel},${hy+dy*travel}`);line.style.strokeDasharray=`${oldLength} ${oldLength+travel+100}`;const duration=Math.min(320,180+oldLength*.1),start=performance.now();
  function animate(now){if(activeEpoch!==epoch)return;const t=Math.min(1,(now-start)/duration),distance=t*(oldLength+travel);line.style.strokeDashoffset=-distance;const headDistance=Math.min(travel,distance);head.setAttribute('transform',`translate(${dx*headDistance} ${dy*headDistance})`);if(t<1)requestAnimationFrame(animate);else finish();}requestAnimationFrame(animate);
 }
-function win(){unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,level+1));storage.set('arrow-unlocked',unlocked);storage.set('arrow-level',Math.min(LEVEL_COUNT,level+1));message('所有箭头都出发啦！');tone(true);$('win-text').textContent=`第 ${level} 关完成，你让 ${total} 个箭头顺利出发！`;$('next').innerHTML=level<LEVEL_COUNT?'下一关 <span aria-hidden="true">→</span>':'再挑战一局 <span aria-hidden="true">↻</span>';$('win-dialog').showModal();if(!reduced)for(let i=0;i<28;i++){const el=document.createElement('i');el.className='confetti';el.style.cssText=`left:${Math.random()*100}%;top:0;background:${colors[i%5]};animation-delay:${Math.random()*.4}s`;document.body.append(el);setTimeout(()=>el.remove(),2200)}}
-$('hint').onclick=()=>{if(busy)return;const a=arrows.find(a=>canExit(a,arrows,puzzle.size));if(a){document.querySelectorAll('.hinted').forEach(e=>e.classList.remove('hinted'));$(`arrow-${a.id}`).classList.add('hinted');revealArrow(a);message('点点发光的箭头，试试看！')}};
+function win(){completed.add(level);storage.set('arrow-completed',JSON.stringify([...completed]));unlocked=Math.max(unlocked,Math.min(LEVEL_COUNT,level+1));storage.set('arrow-unlocked',unlocked);storage.set('arrow-level',Math.min(LEVEL_COUNT,level+1));message('所有箭头都出发啦！');tone(true);$('win-text').textContent=`第 ${level} 关完成，你让 ${total} 个箭头顺利出发！`;$('next').innerHTML=level<LEVEL_COUNT?'下一关 <span aria-hidden="true">→</span>':'再挑战一局 <span aria-hidden="true">↻</span>';$('win-dialog').showModal();if(!reduced)for(let i=0;i<28;i++){const el=document.createElement('i');el.className='confetti';el.style.cssText=`left:${Math.random()*100}%;top:0;background:${colors[i%5]};animation-delay:${Math.random()*.4}s`;document.body.append(el);setTimeout(()=>el.remove(),2200)}}
+$('hint').onclick=()=>{const a=arrows.find(a=>canExit(a,arrows,puzzle.size));if(a){document.querySelectorAll('.hinted').forEach(e=>e.classList.remove('hinted'));$(`arrow-${a.id}`).classList.add('hinted');revealArrow(a);message('点点发光的箭头，试试看！')}};
 $('shuffle').onclick=()=>{if(busy)return;if(arrows.length===total)fresh();else $('shuffle-dialog').showModal()};
 $('confirm-shuffle').onclick=()=>{$('shuffle-dialog').close();fresh()};
 $('next').onclick=()=>fresh(Math.min(LEVEL_COUNT,level+1));$('again').onclick=()=>fresh();
@@ -41,23 +47,23 @@ function showLevelPage(page){
  const first=levelPage*25+1,last=Math.min(LEVEL_COUNT,first+24);
  $('level-grid').replaceChildren();
  for(let i=first;i<=last;i++){
-  const b=document.createElement('button');b.textContent=i;b.disabled=i>unlocked;
-  b.className=(i<unlocked?'completed ':'')+(i===level?'current':'');
-  b.setAttribute('aria-label',`第${i}关${i>unlocked?'，还未解锁':''}`);
+  const b=document.createElement('button');b.textContent=i;
+  b.className=(completed.has(i)?'completed ':'')+(i===level?'current':'');
+  b.setAttribute('aria-label',`第${i}关${completed.has(i)?'，已完成':''}`);
   if(i===level)b.setAttribute('aria-current','true');
   b.onclick=()=>{$('level-dialog').close();fresh(i)};$('level-grid').append(b);
  }
  $('page-label').textContent=`${first}–${last} / ${LEVEL_COUNT}`;
  $('page-prev').disabled=levelPage===0;$('page-next').disabled=last===LEVEL_COUNT;
  $('chapter-select').value=String(Math.floor(levelPage/2));
- $('progress-label').textContent=`已解锁到第 ${unlocked} 关`;
+ $('progress-label').textContent=`当前在第 ${level} 关`;
 }
 CHAPTERS.forEach((name,i)=>{const option=document.createElement('option');option.value=i;option.textContent=`${i*50+1}–${(i+1)*50} · ${name}`;$('chapter-select').append(option)});
-$('levels').onclick=()=>{if(busy)return;showLevelPage(Math.floor((level-1)/25));$('level-dialog').showModal()};
+$('levels').onclick=()=>{showLevelPage(Math.floor((level-1)/25));$('level-dialog').showModal()};
 $('chapter-select').onchange=e=>showLevelPage(Number(e.target.value)*2);
 $('page-prev').onclick=()=>showLevelPage(levelPage-1);
 $('page-next').onclick=()=>showLevelPage(levelPage+1);
-$('back-progress').onclick=()=>showLevelPage(Math.floor((unlocked-1)/25));
+$('back-progress').onclick=()=>showLevelPage(Math.floor((level-1)/25));
 function applyZoom(value=zoom){
  const wrap=$('board-viewport'),board=$('board');
  const space=$('board-space');
